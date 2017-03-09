@@ -3,9 +3,12 @@ package com.postgresintl.logicaldecoding;
 import java.nio.ByteBuffer;
 import java.sql.*;
 import java.util.Properties;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.google.protobuf.UnknownFieldSet;
+import decoderbufs.proto.PgldProtos;
 import org.postgresql.PGConnection;
 import org.postgresql.PGProperty;
 import org.postgresql.core.BaseConnection;
@@ -13,6 +16,7 @@ import org.postgresql.core.ServerVersion;
 import org.postgresql.replication.LogSequenceNumber;
 import org.postgresql.replication.PGReplicationStream;
 
+import static decoderbufs.proto.PgldProtos.DatumMessage.PARSER;
 
 
 /**
@@ -54,7 +58,6 @@ public class App
         try (PreparedStatement preparedStatement =
                      connection.prepareStatement("SELECT * FROM pg_create_logical_replication_slot(?, ?)") )
         {
-
             preparedStatement.setString(1, slotName);
             preparedStatement.setString(2, outputPlugin);
             try (ResultSet rs = preparedStatement.executeQuery())
@@ -137,15 +140,26 @@ public class App
                         .logical()
                         .withSlotName(SLOT_NAME)
                         .withStartPosition(lsn)
-                        .withSlotOption("include-xids", false)
+                        .withSlotOption("include-xids", true)
+                        .withSlotOption("pretty-print",true)
+                        .withSlotOption("skip-empty-xacts", true)
+                        .withStatusInterval(20, TimeUnit.SECONDS)
                         .start();
         ByteBuffer buffer;
-        for (int i=0; i<3; i++)
+        while(true)
         {
-            buffer = stream.read();
+            buffer = stream.readPending();
+            if (buffer == null) {
+                TimeUnit.MILLISECONDS.sleep(10L);
+                continue;
+            }
+
             System.out.println( toString(buffer));
+            //feedback
+            stream.setAppliedLSN(stream.getLastReceiveLSN());
+            stream.setFlushedLSN(stream.getLastReceiveLSN());
         }
-        stream.close();
+
     }
 
     private LogSequenceNumber getCurrentLSN() throws SQLException
@@ -170,15 +184,18 @@ public class App
         Properties properties = new Properties();
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
+        PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
         replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost/test",properties);
     }
 
     public static void main( String[] args )
     {
+        String pluginName = "wal2json"; // test_decoding
+
         App app = new App();
         app.createConnection();
         try {
-            app.createLogicalReplicationSlot(SLOT_NAME, "test_decoding");
+            app.createLogicalReplicationSlot(SLOT_NAME, "wal2json");
             app.openReplicationConnection();
             app.receiveChangesOccursBeforStartReplication();
         } catch (InterruptedException e) {
