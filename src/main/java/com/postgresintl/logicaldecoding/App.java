@@ -3,12 +3,9 @@ package com.postgresintl.logicaldecoding;
 import java.nio.ByteBuffer;
 import java.sql.*;
 import java.util.Properties;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import com.google.protobuf.UnknownFieldSet;
-import decoderbufs.proto.PgldProtos;
 import org.postgresql.PGConnection;
 import org.postgresql.PGProperty;
 import org.postgresql.core.BaseConnection;
@@ -16,7 +13,6 @@ import org.postgresql.core.ServerVersion;
 import org.postgresql.replication.LogSequenceNumber;
 import org.postgresql.replication.PGReplicationStream;
 
-import static decoderbufs.proto.PgldProtos.DatumMessage.PARSER;
 
 
 /**
