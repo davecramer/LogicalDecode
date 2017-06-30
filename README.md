@@ -31,7 +31,7 @@ A plugin is a library which accepts the changes and decodes the changes into a f
 
 Creating a slot with JDBC:
 
-```
+```java
 public void createLogicalReplicationSlot(String slotName, String outputPlugin ) throws InterruptedException, SQLException, TimeoutException
 {
     //drop previous slot
@@ -69,7 +69,7 @@ would not do this. The code below first terminates any existing replication conn
 the slot
 
 
-```
+```java
 public void dropReplicationSlot(Connection connection, String slotName)
             throws SQLException, InterruptedException, TimeoutException
 {
@@ -97,7 +97,7 @@ public void dropReplicationSlot(Connection connection, String slotName)
 *  We know the current xlog location. In order to read the xlog location the driver provides a helper 
 class LogicalSequenceNumber. It is public so you can use it easily.
 
-```
+```java
 package org.postgresql.replication;
 /**
  * LSN (Log Sequence Number) data which is a pointer to a location in the XLOG
