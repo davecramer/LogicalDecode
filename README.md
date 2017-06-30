@@ -1,7 +1,7 @@
 # LogicalDecode
 ## Demo for PostgreSQL Logical Decoding with JDBC
 
-What is Logical decoding?
+### What is Logical decoding?
 
 It's useful to understand what physical replication is in order to understand logical decoding.
 
@@ -21,7 +21,7 @@ Providing changes for only one database per slot
 Defining an API which facilitates writing an output plugin to output the changes in any format you define.
 
 
-Concepts of Logical Decoding
+### Concepts of Logical Decoding
 
 Above I mentioned two new concepts slots, and plugins
 
@@ -91,7 +91,7 @@ public void dropReplicationSlot(Connection connection, String slotName)
 }
 ```
 
-# What have we done so far? 
+### What have we done so far? 
 
 *  We have created a replication slot
 *  We know the current xlog location. In order to read the xlog location the driver provides a helper 
@@ -200,7 +200,7 @@ public final class LogSequenceNumber {
 }
 ```
 
-# An example how to use this class:
+### An example how to use this class:
 
 ```java
 private LogSequenceNumber getCurrentLSN() throws SQLException
@@ -224,7 +224,7 @@ private LogSequenceNumber getCurrentLSN() throws SQLException
 
 `LogSequenceNumber` knows how to parse the string returned by `pg_current_xlog_location()
 
-# Now to actually read changes from a database
+### Now to actually read changes from a database
 
 * We need to create a connection capable of replication.
 * The replication protocol only understands the Simple Query protocol
@@ -252,7 +252,7 @@ in the connection URL.
 
 
 
-# We have a replication connection now what?
+### We have a replication connection now what?
 
 The following code can be used to read changes from the database
 
@@ -295,3 +295,39 @@ public void receiveChangesOccursBeforStartReplication() throws Exception {
 
 }
 ```
+
+So lets break this down.
+
+1) First get the current lsn *before* we modify the database
+2) Modify some data
+3) Get a replication stream. This uses a fluent style and has a number of steps
+   1) ask the connection for the replicationAPI, and a stream
+   2) ask for logical
+   3) specify the slot that we want to read changes from
+   4) specify where we want to start from
+   5) Options for the decoder which are specific to the output plugin
+   6) set the status update timeout interval to 20 seconds, this is how often we will
+   send the status update message back to the server
+4) read data from the stream. This uses a non-blocking call ```readPending```
+5) do something with the data. In this case we simply display it.
+6) Now tell the server that we have read the changes so that it is free to release the WAL buffers
+7) This will automatically be sent to the server by the driver when we send the status update message
+to the server.
+   
+### Notes 
+* withStartPosition can be left out; in which case replication would start from the 
+current position
+* the options for each output plugin are unique to that plugin, if using an existing plugin you will
+ have to look at the source code for details for instance wal2json has the following 
+ ```
+ 	data->include_xids = false;
+ 	data->include_timestamp = false;
+ 	data->include_schemas = true;
+ 	data->include_types = true;
+ 	data->pretty_print = false;
+ 	data->write_in_chunks = false;
+ 	data->include_lsn = false;
+
+ ```
+ 
+ 
