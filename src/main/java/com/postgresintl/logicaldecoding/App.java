@@ -23,8 +23,9 @@ public class App
 {
     private final static String SLOT_NAME="slot";
 
-    Connection connection;
+    Connection  mgmntConnection;
     Connection replicationConnection;
+    Connection dmlConnection;
 
     private static String toString(ByteBuffer buffer) {
         int offset = buffer.arrayOffset();
@@ -38,7 +39,8 @@ public class App
     {
         try
         {
-            connection = DriverManager.getConnection("jdbc:postgresql://localhost/test","davec","");
+            mgmntConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","rep","");
+            dmlConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","davec","");
         }
         catch (SQLException ex)
         {
@@ -48,11 +50,11 @@ public class App
     }
     public void createLogicalReplicationSlot(String slotName, String outputPlugin ) throws InterruptedException, SQLException, TimeoutException
     {
-        //drop previos slot
-        dropReplicationSlot(connection, slotName);
+        //drop previous slot
+        dropReplicationSlot(mgmntConnection, slotName);
 
         try (PreparedStatement preparedStatement =
-                     connection.prepareStatement("SELECT * FROM pg_create_logical_replication_slot(?, ?)") )
+                     mgmntConnection.prepareStatement("SELECT * FROM pg_create_logical_replication_slot(?, ?)") )
         {
             preparedStatement.setString(1, slotName);
             preparedStatement.setString(2, outputPlugin);
@@ -125,8 +127,8 @@ public class App
 
         LogSequenceNumber lsn = getCurrentLSN();
 
-        Statement st = connection.createStatement();
-        st.execute("insert into test_logic_table(name) values('previous value')");
+        Statement st = dmlConnection.createStatement();
+        st.execute("insert into test_logical_table(name) values('previous value')");
         st.close();
 
         PGReplicationStream stream =
@@ -137,7 +139,7 @@ public class App
                         .withSlotName(SLOT_NAME)
                         .withStartPosition(lsn)
                         .withSlotOption("include-xids", true)
-                        .withSlotOption("pretty-print",true)
+//                        .withSlotOption("pretty-print",true)
                         .withSlotOption("skip-empty-xacts", true)
                         .withStatusInterval(20, TimeUnit.SECONDS)
                         .start();
@@ -160,10 +162,10 @@ public class App
 
     private LogSequenceNumber getCurrentLSN() throws SQLException
     {
-        try (Statement st = connection.createStatement())
+        try (Statement st = mgmntConnection.createStatement())
         {
             try (ResultSet rs = st.executeQuery("select "
-                    + (((BaseConnection) connection).haveMinimumServerVersion(ServerVersion.v10)
+                    + (((BaseConnection) mgmntConnection).haveMinimumServerVersion(ServerVersion.v10)
                     ? "pg_current_wal_location()" : "pg_current_xlog_location()"))) {
 
                 if (rs.next()) {
@@ -178,20 +180,22 @@ public class App
 
     private void openReplicationConnection() throws Exception {
         Properties properties = new Properties();
+        properties.setProperty("user","rep");
+        properties.setProperty("password","test");
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
         PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
-        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost/test",properties);
+        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test",properties);
     }
 
     public static void main( String[] args )
     {
-        String pluginName = "wal2json"; // test_decoding
+        String pluginName = "test_decoding"; //wal2json
 
         App app = new App();
         app.createConnection();
         try {
-            app.createLogicalReplicationSlot(SLOT_NAME, "wal2json");
+            app.createLogicalReplicationSlot(SLOT_NAME, pluginName);
             app.openReplicationConnection();
             app.receiveChangesOccursBeforStartReplication();
         } catch (InterruptedException e) {
