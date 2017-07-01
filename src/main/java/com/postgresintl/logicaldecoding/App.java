@@ -40,7 +40,7 @@ public class App
         try
         {
             mgmntConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","rep","");
-            dmlConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","davec","");
+            dmlConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","test","test");
         }
         catch (SQLException ex)
         {

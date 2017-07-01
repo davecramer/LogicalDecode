@@ -312,7 +312,7 @@ So lets break this down.
 5) do something with the data. In this case we simply display it.
 6) Now tell the server that we have read the changes so that it is free to release the WAL buffers
 7) This will automatically be sent to the server by the driver when we send the status update message
-to the server.
+
    
 ### Notes 
 * withStartPosition can be left out; in which case replication would start from the 
@@ -329,5 +329,25 @@ current position
  	data->include_lsn = false;
 
  ```
+# Requirements
  
+ As the postgres user 
+ ```postgresql
+
+ create user rep with replication;
+ create user test with password 'test';
+ create database test owner test;
+```
+As the user test
+ ```postgresql
+ create table test_logical_table(id serial, name text);
+ ```
+ 
+ postgresql.conf
+ max_replication_slots > 0
+ max_wal_senders > 0
+ wal_level = logical
+ 
+ 
+ host    replication     rep        0.0.0.0/0    md5
  
