@@ -1,18 +1,46 @@
-package com.postgresintl.logicaldecoding;
+/*
+BSD 3-Clause License
 
-import java.nio.ByteBuffer;
-import java.sql.*;
+Copyright (c) 2017, Dave Cramer
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of the copyright holder nor the names of its
+  contributors may be used to endorse or promote products derived from
+  this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+package com.postgresintl.logicaldecoding.solution._02;
+
+import org.postgresql.PGProperty;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
-import org.postgresql.PGConnection;
-import org.postgresql.PGProperty;
-import org.postgresql.core.BaseConnection;
-import org.postgresql.core.ServerVersion;
-import org.postgresql.replication.LogSequenceNumber;
-import org.postgresql.replication.PGReplicationStream;
-
 
 
 /**
@@ -22,31 +50,29 @@ import org.postgresql.replication.PGReplicationStream;
 public class App 
 {
     private final static String SLOT_NAME="slot";
+    private final static String PORT="15432";
+    private final static String HOST="localhost";
+    private final static String DB = "test";
 
     Connection connection;
-    Connection replicationConnection;
 
-    private static String toString(ByteBuffer buffer) {
-        int offset = buffer.arrayOffset();
-        byte[] source = buffer.array();
-        int length = source.length - offset;
-
-        return new String(source, offset, length);
-    }
 
     public void createConnection()
     {
         try
         {
-            connection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","test","");
+            Properties props = new Properties();
+            props.setProperty(PGProperty.USER.getName(),"test");
+            props.setProperty(PGProperty.PASSWORD.getName(),"");
+
+            connection = DriverManager.getConnection("jdbc:postgresql://"+HOST+':'+PORT+'/'+DB, props);
         }
         catch (SQLException ex)
         {
-
+            ex.printStackTrace();
         }
 
-    }
-    public void createLogicalReplicationSlot(String slotName, String outputPlugin ) throws InterruptedException, SQLException, TimeoutException
+    }    public void createLogicalReplicationSlot(String slotName, String outputPlugin ) throws InterruptedException, SQLException, TimeoutException
     {
         //drop previos slot
         dropReplicationSlot(connection, slotName);
@@ -120,70 +146,6 @@ public class App
             throw new TimeoutException("Wait stop replication slot " + timeInWait + " timeout occurs");
         }
     }
-    public void receiveChangesOccursBeforStartReplication() throws Exception {
-        PGConnection pgConnection = (PGConnection) replicationConnection;
-
-        LogSequenceNumber lsn = getCurrentLSN();
-
-        Statement st = connection.createStatement();
-        st.execute("insert into test_logical_table(name) values('previous value')");
-        st.close();
-
-        PGReplicationStream stream =
-                pgConnection
-                        .getReplicationAPI()
-                        .replicationStream()
-                        .logical()
-                        .withSlotName(SLOT_NAME)
-                        .withStartPosition(lsn)
-                        .withSlotOption("include-xids", true)
-                        .withSlotOption("skip-empty-xacts", true)
-                        .withStatusInterval(20, TimeUnit.SECONDS)
-                        .start();
-        ByteBuffer buffer;
-        while(true)
-        {
-            buffer = stream.readPending();
-            if (buffer == null) {
-                TimeUnit.MILLISECONDS.sleep(10L);
-                continue;
-            }
-
-            System.out.println( toString(buffer));
-            //feedback
-            stream.setAppliedLSN(stream.getLastReceiveLSN());
-            stream.setFlushedLSN(stream.getLastReceiveLSN());
-        }
-
-    }
-
-    private LogSequenceNumber getCurrentLSN() throws SQLException
-    {
-        try (Statement st = connection.createStatement())
-        {
-            try (ResultSet rs = st.executeQuery("select "
-                    + (((BaseConnection) connection).haveMinimumServerVersion(ServerVersion.v10)
-                    ? "pg_current_wal_location()" : "pg_current_xlog_location()"))) {
-
-                if (rs.next()) {
-                    String lsn = rs.getString(1);
-                    return LogSequenceNumber.valueOf(lsn);
-                } else {
-                    return LogSequenceNumber.INVALID_LSN;
-                }
-            }
-        }
-    }
-
-    private void openReplicationConnection() throws Exception {
-        Properties properties = new Properties();
-        properties.setProperty("user","test");
-        properties.setProperty("password","");
-        PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
-        PGProperty.REPLICATION.set(properties, "database");
-        PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
-        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test",properties);
-    }
 
     public static void main( String[] args )
     {
@@ -193,8 +155,6 @@ public class App
         app.createConnection();
         try {
             app.createLogicalReplicationSlot(SLOT_NAME, pluginName );
-            app.openReplicationConnection();
-            app.receiveChangesOccursBeforStartReplication();
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (SQLException e) {
