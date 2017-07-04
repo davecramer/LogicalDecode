@@ -38,7 +38,7 @@ public class App
     {
         try
         {
-            connection = DriverManager.getConnection("jdbc:postgresql://localhost/test","test","");
+            connection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","test","");
         }
         catch (SQLException ex)
         {
@@ -126,7 +126,7 @@ public class App
         LogSequenceNumber lsn = getCurrentLSN();
 
         Statement st = connection.createStatement();
-        st.execute("insert into test_logic_table(name) values('previous value')");
+        st.execute("insert into test_logical_table(name) values('previous value')");
         st.close();
 
         PGReplicationStream stream =
@@ -177,10 +177,12 @@ public class App
 
     private void openReplicationConnection() throws Exception {
         Properties properties = new Properties();
+        properties.setProperty("user","test");
+        properties.setProperty("password","");
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
         PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
-        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost/test",properties);
+        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test",properties);
     }
 
     public static void main( String[] args )
