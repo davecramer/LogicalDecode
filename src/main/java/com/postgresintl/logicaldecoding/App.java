@@ -16,7 +16,7 @@ import org.postgresql.replication.PGReplicationStream;
 
 
 /**
- * Hello world!
+ * Logical Decoding App
  *
  */
 public class App 
