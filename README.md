@@ -335,6 +335,8 @@ current position
  ```postgresql
 
  create user rep with replication;
+ alter user rep password 'test';
+ 
  create user test with password 'test';
  create database test owner test;
 ```

@@ -222,7 +222,7 @@ public class App
     private void openReplicationConnection() throws Exception {
         Properties properties = new Properties();
         properties.setProperty("user","rep");
-        properties.setProperty("password","");
+        properties.setProperty("password","test");
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
         PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
