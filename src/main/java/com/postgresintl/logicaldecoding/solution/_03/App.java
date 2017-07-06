@@ -57,7 +57,7 @@ import java.util.concurrent.TimeoutException;
 public class App 
 {
     private final static String SLOT_NAME="slot";
-    private final static String PORT="15432";
+    private final static String PORT="5432";
     private final static String HOST="localhost";
     private final static String DB = "test";
 
@@ -79,7 +79,7 @@ public class App
         try
         {
             Properties props = new Properties();
-            props.setProperty(PGProperty.USER.getName(),"test");
+            props.setProperty(PGProperty.USER.getName(),"davec");
             props.setProperty(PGProperty.PASSWORD.getName(),"");
 
             connection = DriverManager.getConnection("jdbc:postgresql://"+HOST+':'+PORT+'/'+DB, props);
@@ -221,7 +221,7 @@ public class App
 
     private void openReplicationConnection() throws Exception {
         Properties properties = new Properties();
-        properties.setProperty("user","rep");
+        properties.setProperty("user","davec");
         properties.setProperty("password","test");
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
@@ -231,7 +231,7 @@ public class App
 
     public static void main( String[] args )
     {
-        String pluginName = "test_decoding";
+        String pluginName = "wal2json";
 
         App app = new App();
         app.createConnection();

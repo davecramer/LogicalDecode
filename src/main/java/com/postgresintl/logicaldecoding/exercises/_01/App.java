@@ -53,6 +53,7 @@ public class App
     private final static String HOST="localhost";
     private final static String DB = "test";
 
+
     Connection connection;
 
     public void createConnection()

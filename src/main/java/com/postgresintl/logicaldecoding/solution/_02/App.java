@@ -118,7 +118,8 @@ public class App
             throws SQLException
     {
 
-        try (PreparedStatement preparedStatement = connection.prepareStatement("select active from pg_replication_slots where slot_name = ?")){
+        try (PreparedStatement preparedStatement = connection.prepareStatement
+            ("select active from pg_replication_slots where slot_name = ?")){
             preparedStatement.setString(1, slotName);
             try (ResultSet rs = preparedStatement.executeQuery())
             {
