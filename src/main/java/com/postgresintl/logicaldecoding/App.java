@@ -22,9 +22,9 @@ import org.postgresql.replication.PGReplicationStream;
 public class App 
 {
     private final static String SLOT_NAME="slot";
-
     Connection connection;
     Connection replicationConnection;
+
 
     private static String toString(ByteBuffer buffer) {
         int offset = buffer.arrayOffset();
@@ -38,7 +38,7 @@ public class App
     {
         try
         {
-            connection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test","test","");
+            connection = DriverManager.getConnection("jdbc:postgresql://localhost/test","davec","");
         }
         catch (SQLException ex)
         {
@@ -46,6 +46,8 @@ public class App
         }
 
     }
+
+
     public void createLogicalReplicationSlot(String slotName, String outputPlugin ) throws InterruptedException, SQLException, TimeoutException
     {
         //drop previos slot
@@ -163,7 +165,7 @@ public class App
         {
             try (ResultSet rs = st.executeQuery("select "
                     + (((BaseConnection) connection).haveMinimumServerVersion(ServerVersion.v10)
-                    ? "pg_current_wal_location()" : "pg_current_xlog_location()"))) {
+                    ? "pg_current_wal_lsn()" : "pg_current_xlog_location()"))) {
 
                 if (rs.next()) {
                     String lsn = rs.getString(1);
@@ -177,12 +179,12 @@ public class App
 
     private void openReplicationConnection() throws Exception {
         Properties properties = new Properties();
-        properties.setProperty("user","test");
+        properties.setProperty("user","davec");
         properties.setProperty("password","");
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
         PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
-        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost:15432/test",properties);
+        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost/test",properties);
     }
 
     public static void main( String[] args )
