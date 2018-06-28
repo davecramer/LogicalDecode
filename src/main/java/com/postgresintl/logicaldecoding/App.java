@@ -22,6 +22,10 @@ import org.postgresql.replication.PGReplicationStream;
 public class App 
 {
     private final static String SLOT_NAME="slot";
+    private final static String HOST="localhost";
+    private final static String PORT="5433";
+    private final static String DATABASE="test";
+
     Connection connection;
     Connection replicationConnection;
 
@@ -33,12 +37,14 @@ public class App
 
         return new String(source, offset, length);
     }
-
+    private String createUrl(){
+        return "jdbc:postgresql://"+HOST+':'+PORT+'/'+DATABASE;
+    }
     public void createConnection()
     {
         try
         {
-            connection = DriverManager.getConnection("jdbc:postgresql://localhost/test","davec","");
+            connection = DriverManager.getConnection(createUrl(),"davec","");
         }
         catch (SQLException ex)
         {
@@ -47,10 +53,27 @@ public class App
 
     }
 
+    public void dropPublication(String publication) throws SQLException {
+
+        try (PreparedStatement preparedStatement =
+                 connection.prepareStatement("DROP PUBLICATION " + publication ) )
+        {
+            preparedStatement.execute();
+        }
+    }
+    public void createPublication(String publication) throws SQLException {
+
+        try (PreparedStatement preparedStatement =
+                 connection.prepareStatement("CREATE PUBLICATION " + publication + " FOR ALL TABLES") )
+        {
+            preparedStatement.execute();
+        }
+    }
+
 
     public void createLogicalReplicationSlot(String slotName, String outputPlugin ) throws InterruptedException, SQLException, TimeoutException
     {
-        //drop previos slot
+        //drop previous slot
         dropReplicationSlot(connection, slotName);
 
         try (PreparedStatement preparedStatement =
@@ -129,6 +152,8 @@ public class App
 
         Statement st = connection.createStatement();
         st.execute("insert into test_logical_table(name) values('previous value')");
+        st.execute("insert into test_logical_table(name) values('previous value')");
+        st.execute("insert into test_logical_table(name) values('previous value')");
         st.close();
 
         PGReplicationStream stream =
@@ -138,9 +163,11 @@ public class App
                         .logical()
                         .withSlotName(SLOT_NAME)
                         .withStartPosition(lsn)
-                        .withSlotOption("include-xids", true)
-                        .withSlotOption("skip-empty-xacts", true)
-                        .withStatusInterval(20, TimeUnit.SECONDS)
+                    //    .withSlotOption("proto_version",1)
+                    //    .withSlotOption("publication_names", "pub1")
+                       .withSlotOption("include-xids", true)
+                    //    .withSlotOption("skip-empty-xacts", true)
+                        .withStatusInterval(10, TimeUnit.SECONDS)
                         .start();
         ByteBuffer buffer;
         while(true)
@@ -184,17 +211,25 @@ public class App
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
         PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
-        replicationConnection = DriverManager.getConnection("jdbc:postgresql://localhost/test",properties);
+        replicationConnection = DriverManager.getConnection(createUrl(),properties);
     }
-
+    private boolean isServerCompatible() {
+        return ((BaseConnection)connection).haveMinimumServerVersion(ServerVersion.v9_5);
+    }
     public static void main( String[] args )
     {
-        String pluginName = "test_decoding";
+        String pluginName = "wal2json";
 
         App app = new App();
         app.createConnection();
+        if (!app.isServerCompatible() ) {
+            System.err.println("must have server version greater than 9.4");
+            System.exit(-1);
+        }
         try {
             app.createLogicalReplicationSlot(SLOT_NAME, pluginName );
+//            app.dropPublication("pub1");
+//            app.createPublication("pub1");
             app.openReplicationConnection();
             app.receiveChangesOccursBeforStartReplication();
         } catch (InterruptedException e) {

@@ -330,6 +330,10 @@ current position
 
  ```
 # Requirements
+
+Note that while logical decoding was available in 9.4 this code really only works with 9.5 and above
+due to the inability to easily determine which pid has the active slot. active_pid was added in 9.5 
+For this reason
  
  As the postgres user 
  ```postgresql
