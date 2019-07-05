@@ -9,7 +9,7 @@ Physical replication extends the functionality of recovery mode.  Write Ahead Lo
 
 In the event of an emergency shutdown (power fail, OOM kill) when the server comes back online it will attempt to apply the outstanding WAL up to the point of the shutdown. This is referred to as recovery mode.
 
-Physical replication takes advantage of this infrastructure built into the server. The standby is started in recovery mode and WAL created by the master are applied to the standby. How that occurs is beyond the scope but you can read about it [here](https://www.postgresql.org/docs/9.6/static/continuous-archiving.html) .
+Physical replication takes advantage of this infrastructure built into the server. The standby is started in recovery mode and WAL created by the primary are applied to the standby. How that occurs is beyond the scope but you can read about it [here](https://www.postgresql.org/docs/current/continuous-archiving.html) .
 
 The interesting bit here is that we have a mechanism by which to access the changes in the heap without connecting to the database.
 
