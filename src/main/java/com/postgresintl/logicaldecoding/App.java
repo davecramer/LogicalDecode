@@ -6,6 +6,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.postgresintl.logicaldecoding.model.Attribute;
+import com.postgresintl.logicaldecoding.model.Relation;
 import org.postgresql.PGConnection;
 import org.postgresql.PGProperty;
 import org.postgresql.core.BaseConnection;
@@ -31,11 +33,102 @@ public class App
 
 
     private static String toString(ByteBuffer buffer) {
-        int offset = buffer.arrayOffset();
-        byte[] source = buffer.array();
-        int length = source.length - offset;
 
-        return new String(source, offset, length);
+        byte cmd = buffer.get();
+        switch (cmd) {
+            case 'R':
+                Relation relation = new Relation();
+                relation.setOid(buffer.getInt());
+
+                relation.setSchema(getString(buffer));
+                relation.setName(getString(buffer));
+                byte replicaIdent = buffer.get();
+                short numAttrs = buffer.getShort();
+                for (int i = 0; i < numAttrs;i++){
+                    byte replicaIdentityFull = buffer.get();
+                    String attrName=getString(buffer);
+                    int attrId = buffer.getInt();
+                    int attrMode = buffer.getInt();
+                    relation.addAttribute(new Attribute(attrId, attrName, attrMode, replicaIdentityFull));
+                }
+
+                return "SCHEMA: " + relation.toString();
+
+            case 'B':
+               LogSequenceNumber finalLSN = LogSequenceNumber.valueOf(buffer.getLong());
+               Timestamp commitTime = new Timestamp(buffer.getLong());
+               int transactionId = buffer.getInt();
+               return "BEGIN final LSN: " + finalLSN.toString() + " Commit Time: " + commitTime + " XID: " + transactionId;
+
+            case 'C':
+                // COMMIT
+                byte unusedFlag = buffer.get();
+                LogSequenceNumber commitLSN = LogSequenceNumber.valueOf( buffer.getLong() );
+                LogSequenceNumber endLSN = LogSequenceNumber.valueOf( buffer.getLong() );
+                commitTime = new Timestamp(buffer.getLong());
+                return "COMMIT commit LSN:" + commitLSN.toString() + " end LSN:" + endLSN.toString() + " commitTime: " + commitTime;
+
+            case 'U': // UPDATE
+            case 'D': // DELETE
+                StringBuffer sb = new StringBuffer(cmd=='U'?"UPDATE: ":"DELETE: ");
+                int oid = buffer.getInt();
+                /*
+                 this can be O or K if Delete or possibly N if UPDATE
+                 K means key
+                 O means old data
+                 N means new data
+                 */
+                char keyOrTuple = (char)buffer.get();
+                getTuple(buffer, sb);
+                return sb.toString();
+
+            case 'I':
+                sb = new StringBuffer("INSERT: ");
+                // oid of relation that is being inserted
+                oid = buffer.getInt();
+                // should be an N
+                char isNew = (char)buffer.get();
+                getTuple(buffer, sb);
+                return sb.toString();
+        }
+        return "";
+    }
+
+    private static void getTuple(ByteBuffer buffer, StringBuffer sb) {
+        short numAttrs;
+        numAttrs = buffer.getShort();
+        for (int i = 0; i < numAttrs; i++) {
+            byte c = buffer.get();
+            switch (c) {
+                case 'n': // null
+                    sb.append("NULL, ");
+                    break;
+                case 'u': // unchanged toast column
+                    break;
+                case 't': // textual data
+                    int strLen = buffer.getInt();
+                    byte[] bytes = new byte[strLen];
+                    buffer.get(bytes, 0, strLen);
+                    String value = new String(bytes);
+                    sb.append(value).append(", ");
+                    break;
+                default:
+                    sb.append("command: ").append((char) c);
+
+            }
+        }
+    }
+
+    private static String getString(ByteBuffer buffer){
+        StringBuffer sb = new StringBuffer();
+        while ( true ){
+            byte c = buffer.get();
+            if ( c == 0 ) {
+                break;
+            }
+            sb.append((char)c);
+        }
+        return sb.toString();
     }
     private String createUrl(){
         return "jdbc:postgresql://"+HOST+':'+PORT+'/'+DATABASE;
@@ -45,6 +138,7 @@ public class App
         try
         {
             connection = DriverManager.getConnection(createUrl(),"test","test");
+            connection.createStatement().execute("set wal_debug=true");
         }
         catch (SQLException ex)
         {
@@ -178,7 +272,7 @@ public class App
         "drop table t0",
         "create table t0(pk serial primary key, val3 int)",
         "alter table t0 replica identity full",
-        "insert into t0 values( 10, 1)"
+        "insert into t0 values( 11, 1)"
     };
 
     public void dosomestuff(String []cmds) throws Exception {
@@ -187,7 +281,9 @@ public class App
             st.execute(cmds[i]);
         }
     }
-    public void receiveChangesOccursBeforStartReplication() throws Exception {
+    static PGReplicationStream stream;
+
+    public void openStream() throws Exception {
         PGConnection pgConnection = (PGConnection) replicationConnection;
 
         LogSequenceNumber lsn = LogSequenceNumber.INVALID_LSN; //getCurrentLSN();
@@ -199,7 +295,7 @@ public class App
         st.execute("insert into test_logical_table(name) values('previous value')");
         st.close();
 */
-        PGReplicationStream stream =
+        stream =
                 pgConnection
                         .getReplicationAPI()
                         .replicationStream()
@@ -212,20 +308,6 @@ public class App
                     //    .withSlotOption("skip-empty-xacts", true)
                         .withStatusInterval(10, TimeUnit.SECONDS)
                         .start();
-        ByteBuffer buffer;
-        while(true)
-        {
-            buffer = stream.readPending();
-            if (buffer == null) {
-                TimeUnit.MILLISECONDS.sleep(10L);
-                continue;
-            }
-
-            System.out.println( toString(buffer));
-            //feedback
-            stream.setAppliedLSN(stream.getLastReceiveLSN());
-            stream.setFlushedLSN(stream.getLastReceiveLSN());
-        }
 
     }
 
@@ -259,12 +341,38 @@ public class App
     private boolean isServerCompatible() {
         return ((BaseConnection)connection).haveMinimumServerVersion(ServerVersion.v9_5);
     }
+
+    static boolean active = true;
+
+    public static class ReadChanges implements Runnable {
+
+        ByteBuffer buffer;
+        public void run() {
+            while (true) {
+                try {
+                    buffer = stream.readPending();
+                    if (buffer == null) {
+                        TimeUnit.MILLISECONDS.sleep(10L);
+                        continue;
+                    }
+
+                    System.out.println(App.toString(buffer));
+                    //feedback
+                    stream.setAppliedLSN(stream.getLastReceiveLSN());
+                    stream.setFlushedLSN(stream.getLastReceiveLSN());
+                } catch ( Exception ex ) {
+
+                }
+            }
+        }
+    }
     public static void main( String[] args )
     {
         String pluginName = "pgoutput";
 
         App app = new App();
         app.createConnection();
+
         if (!app.isServerCompatible() ) {
             System.err.println("must have server version greater than 9.4");
             System.exit(-1);
@@ -275,10 +383,16 @@ public class App
             app.createPublication("pub1");
             app.dosomestuff(commands);
             app.openReplicationConnection();
-            app.receiveChangesOccursBeforStartReplication();
+            app.openStream();
+            new Thread(new ReadChanges()).start();
+            Thread.sleep(5000);
             app.replicationConnection.close();
             app.dosomestuff(commands2);
+            app.openReplicationConnection();
+            app.openStream();
+            Thread.sleep(5000);
             app.replicationConnection.close();
+            app.dropPublication("pub1");
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (SQLException e) {
@@ -288,5 +402,21 @@ public class App
         } catch (Exception e) {
             e.printStackTrace();
         }
+        try {
+            app.dosomestuff(commands2);
+            app.openReplicationConnection();
+            app.openStream();
+            app.replicationConnection.close();
+            app.dropPublication("pub1");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } catch (TimeoutException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 }
