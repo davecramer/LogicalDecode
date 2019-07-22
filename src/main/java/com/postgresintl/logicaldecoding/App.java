@@ -55,10 +55,19 @@ public class App
 
     public void dropPublication(String publication) throws SQLException {
 
-        try (PreparedStatement preparedStatement =
-                 connection.prepareStatement("DROP PUBLICATION " + publication ) )
-        {
-            preparedStatement.execute();
+        ResultSet rs = null;
+        try {
+            /* check to make sure it's really there */
+            rs = connection.createStatement().executeQuery("select * from pg_publication where pubname='" + publication + "'");
+            if (rs.next()) {
+                try (PreparedStatement preparedStatement =
+                             connection.prepareStatement("DROP PUBLICATION " + publication)) {
+                    preparedStatement.execute();
+                }
+            }
+        }
+        finally {
+            if (rs !=null) rs.close();
         }
     }
     public void createPublication(String publication) throws SQLException {
@@ -146,6 +155,7 @@ public class App
         }
     }
     static String [] commands = {
+        "drop table if exists t0",
         "create table if not exists t0(pk serial primary key, val integer)",
         "alter table t0 replica identity full",
         "insert into t0 values( 1, 1)",
@@ -180,7 +190,7 @@ public class App
     public void receiveChangesOccursBeforStartReplication() throws Exception {
         PGConnection pgConnection = (PGConnection) replicationConnection;
 
-        LogSequenceNumber lsn = getCurrentLSN();
+        LogSequenceNumber lsn = LogSequenceNumber.INVALID_LSN; //getCurrentLSN();
 
         /*
         Statement st = connection.createStatement();
