@@ -23,7 +23,7 @@ public class App
 {
     private final static String SLOT_NAME="slot";
     private final static String HOST="localhost";
-    private final static String PORT="5433";
+    private final static String PORT="5432";
     private final static String DATABASE="test";
 
     Connection connection;
@@ -44,7 +44,7 @@ public class App
     {
         try
         {
-            connection = DriverManager.getConnection(createUrl(),"davec","");
+            connection = DriverManager.getConnection(createUrl(),"test","test");
         }
         catch (SQLException ex)
         {
@@ -145,17 +145,50 @@ public class App
             throw new TimeoutException("Wait stop replication slot " + timeInWait + " timeout occurs");
         }
     }
+    static String [] commands = {
+        "create table if not exists t0(pk serial primary key, val integer)",
+        "alter table t0 replica identity full",
+        "insert into t0 values( 1, 1)",
+        "insert into t0 values( 2, 1)",
+        "insert into t0 values( 3, 1)",
+        "insert into t0 values( 4, 1)",
+        "insert into t0 values( 5, 1)",
+        "alter table t0 alter column val type bigint",
+        "alter table t0  add column val2 integer",
+        "insert into t0 values( 6, 1,1)",
+        "drop table t0",
+        "create table t0(pk serial primary key, val3 bigint)",
+        "alter table t0 replica identity full",
+        "insert into t0 values( 7, 1)",
+        "insert into t0 values( 8, 1)"
+    };
+    static String [] commands2 = {
+        "insert into t0 values( 9, 1)",
+        "insert into t0 values( 10, 1)",
+        "drop table t0",
+        "create table t0(pk serial primary key, val3 int)",
+        "alter table t0 replica identity full",
+        "insert into t0 values( 10, 1)"
+    };
+
+    public void dosomestuff(String []cmds) throws Exception {
+        Statement st = connection.createStatement();
+        for (int i =0; i< cmds.length; i++) {
+            st.execute(cmds[i]);
+        }
+    }
     public void receiveChangesOccursBeforStartReplication() throws Exception {
         PGConnection pgConnection = (PGConnection) replicationConnection;
 
         LogSequenceNumber lsn = getCurrentLSN();
 
+        /*
         Statement st = connection.createStatement();
         st.execute("insert into test_logical_table(name) values('previous value')");
         st.execute("insert into test_logical_table(name) values('previous value')");
         st.execute("insert into test_logical_table(name) values('previous value')");
         st.close();
-
+*/
         PGReplicationStream stream =
                 pgConnection
                         .getReplicationAPI()
@@ -163,9 +196,9 @@ public class App
                         .logical()
                         .withSlotName(SLOT_NAME)
                         .withStartPosition(lsn)
-                    //    .withSlotOption("proto_version",1)
-                    //    .withSlotOption("publication_names", "pub1")
-                       .withSlotOption("include-xids", true)
+                        .withSlotOption("proto_version",1)
+                        .withSlotOption("publication_names", "pub1")
+                    //   .withSlotOption("include-xids", true)
                     //    .withSlotOption("skip-empty-xacts", true)
                         .withStatusInterval(10, TimeUnit.SECONDS)
                         .start();
@@ -206,8 +239,8 @@ public class App
 
     private void openReplicationConnection() throws Exception {
         Properties properties = new Properties();
-        properties.setProperty("user","davec");
-        properties.setProperty("password","");
+        properties.setProperty("user","test");
+        properties.setProperty("password","test");
         PGProperty.ASSUME_MIN_SERVER_VERSION.set(properties, "9.4");
         PGProperty.REPLICATION.set(properties, "database");
         PGProperty.PREFER_QUERY_MODE.set(properties, "simple");
@@ -218,7 +251,7 @@ public class App
     }
     public static void main( String[] args )
     {
-        String pluginName = "wal2json";
+        String pluginName = "pgoutput";
 
         App app = new App();
         app.createConnection();
@@ -228,10 +261,14 @@ public class App
         }
         try {
             app.createLogicalReplicationSlot(SLOT_NAME, pluginName );
-//            app.dropPublication("pub1");
-//            app.createPublication("pub1");
+            app.dropPublication("pub1");
+            app.createPublication("pub1");
+            app.dosomestuff(commands);
             app.openReplicationConnection();
             app.receiveChangesOccursBeforStartReplication();
+            app.replicationConnection.close();
+            app.dosomestuff(commands2);
+            app.replicationConnection.close();
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (SQLException e) {
