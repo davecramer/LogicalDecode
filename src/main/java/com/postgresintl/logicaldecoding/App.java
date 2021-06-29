@@ -19,11 +19,11 @@ import org.postgresql.replication.PGReplicationStream;
  * Logical Decoding App
  *
  */
-public class App 
+public class App
 {
-    private final static String SLOT_NAME="slot";
+    private final static String SLOT_NAME="sub1_slot";
     private final static String HOST="localhost";
-    private final static String PORT="5433";
+    private final static String PORT="5432";
     private final static String DATABASE="test";
 
     Connection connection;
@@ -37,10 +37,11 @@ public class App
 
         return new String(source, offset, length);
     }
+
     private String createUrl(){
         return "jdbc:postgresql://"+HOST+':'+PORT+'/'+DATABASE;
     }
-    public void createConnection()
+    public void createConnection() throws SQLException
     {
         try
         {
@@ -50,6 +51,8 @@ public class App
         {
 
         }
+        connection = DriverManager.getConnection(createUrl(),"davec","");
+//        connection.createStatement().execute("set wal_debug=true");
 
     }
 
@@ -149,13 +152,13 @@ public class App
         PGConnection pgConnection = (PGConnection) replicationConnection;
 
         LogSequenceNumber lsn = getCurrentLSN();
-
+/*
         Statement st = connection.createStatement();
-        st.execute("insert into test_logical_table(name) values('previous value')");
-        st.execute("insert into test_logical_table(name) values('previous value')");
-        st.execute("insert into test_logical_table(name) values('previous value')");
+        st.execute("insert into t(t) values('previous value')");
+        st.execute("insert into t(t) values('previous value')");
+        st.execute("insert into t(t) values('previous value')");
         st.close();
-
+*/
         PGReplicationStream stream =
                 pgConnection
                         .getReplicationAPI()
@@ -163,10 +166,22 @@ public class App
                         .logical()
                         .withSlotName(SLOT_NAME)
                         .withStartPosition(lsn)
-                    //    .withSlotOption("proto_version",1)
-                    //    .withSlotOption("publication_names", "pub1")
-                       .withSlotOption("include-xids", true)
+                        .withSlotOption("proto_version",1)
+                        .withSlotOption("publication_names", "pub1")
+                    //   .withSlotOption("include-xids", true)
                     //    .withSlotOption("skip-empty-xacts", true)
+                    //    .withSlotOption("proto_version",1)
+                     //   .withSlotOption("publication_names", "pub1")
+                    //    .withSlotOption("binary","true")
+                    //    .withSlotOption("sizeof_datum", "8")
+                    //    .withSlotOption("sizeof_int", "4")
+                 //       .withSlotOption("sizeof_long", "8")
+                 //       .withSlotOption("bigendian", "false")
+                 //       .withSlotOption("float4_byval", "true")
+                 //       .withSlotOption("float8_byval", "true")
+                 //       .withSlotOption("integer_datetimes", "true")
+                        // .withSlotOption("include-xids", true)
+                        // .withSlotOption("skip-empty-xacts", true)
                         .withStatusInterval(10, TimeUnit.SECONDS)
                         .start();
         ByteBuffer buffer;
@@ -216,22 +231,65 @@ public class App
     private boolean isServerCompatible() {
         return ((BaseConnection)connection).haveMinimumServerVersion(ServerVersion.v9_5);
     }
+
+/*
+    static boolean active = true;
+
+    public class ReadChanges implements Runnable {
+
+        ByteBuffer buffer;
+
+
+        public void run() {
+            while (true) {
+                try {
+                    buffer = stream.readPending();
+                    if (buffer == null) {
+                        TimeUnit.MILLISECONDS.sleep(10L);
+                        continue;
+                    }
+
+                    System.out.println(new PgOutput(buffer).toString());
+                    //feedback
+                    stream.setAppliedLSN(stream.getLastReceiveLSN());
+                    stream.setFlushedLSN(stream.getLastReceiveLSN());
+                } catch ( Exception ex ) {
+                    ex.printStackTrace();
+                }
+            }
+        }
+    }
+
+*/
     public static void main( String[] args )
     {
-        String pluginName = "wal2json";
+        String pluginName = "pgoutput";
 
         App app = new App();
-        app.createConnection();
-        if (!app.isServerCompatible() ) {
-            System.err.println("must have server version greater than 9.4");
-            System.exit(-1);
+        try {
+            app.createConnection();
+
+            if (!app.isServerCompatible()) {
+                System.err.println("must have server version greater than 9.4");
+                System.exit(-1);
+            }
+        }catch (SQLException ex){
+            ex.printStackTrace();
+            return;
         }
         try {
             app.createLogicalReplicationSlot(SLOT_NAME, pluginName );
-//            app.dropPublication("pub1");
-//            app.createPublication("pub1");
+   //         app.dropPublication("pub1");
+   //         app.createPublication("pub1");
             app.openReplicationConnection();
             app.receiveChangesOccursBeforStartReplication();
+
+/*
+            new Thread(new ReadChanges()).start();
+            while (true) {
+                Thread.sleep(5000);
+            }
+*/
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (SQLException e) {
